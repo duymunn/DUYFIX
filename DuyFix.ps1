@@ -1,4 +1,4 @@
-# DUYFIX-PS1: 1.4
+# DUYFIX-PS1: 1.4.1
 # Windows activation diagnostic and voluntary PITVN API connectivity/CID test.
 # All modes are non-mutating: no /ipk, /upk, /cpky, /ato, /atp or service changes.
 param(
@@ -26,48 +26,51 @@ function Get-WindowsProducts {
 }
 
 function Show-Diagnostics([object[]]$Products) {
-    $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
-    Write-Host ('Windows: ' + $os.Caption)
-
-    $active = @($Products | Where-Object { $_.LicenseStatus -eq 1 })
-    if ($active.Count -gt 0) {
-        Write-Host '[OK] Windows is activated.'
-    } else {
-        Write-Host '[WARN] Windows is not activated (or no installed key was detected).'
-    }
-
     if ($Products.Count -eq 0) {
-        Write-Host '[WARN] No installed Windows product key found.'
+        Write-Host '[WARN] No Windows product key found.'
+        return
     }
-    foreach ($p in $Products) {
-        Write-Host '------------------------------------------'
-        Write-Host ('Edition: ' + $p.Name)
-        Write-Host ('Channel: ' + $p.Description)
-        Write-Host ('Key last 5: ' + $p.PartialProductKey)
-        Write-Host ('License status: ' + $p.LicenseStatus)
-        $reason = Show-ErrorCode $p.LicenseStatusReason
-        Write-Host ('Reason code: ' + $reason)
+
+    # When a Windows license is already active, do not display unrelated
+    # non-activated product records as if they were current errors.
+    $active = @($Products | Where-Object { $_.LicenseStatus -eq 1 })
+    $display = if ($active.Count -gt 0) { @($active[0]) } else { $Products }
+
+    foreach ($p in $display) {
         $channel = if ($p.Description -match 'VOLUME_MAK') { 'MAK' }
+                   elseif ($p.Description -match 'VOLUME_KMS') { 'KMS' }
                    elseif ($p.Description -match 'RETAIL') { 'Retail' }
                    elseif ($p.Description -match 'OEM') { 'OEM' }
-                   elseif ($p.Description -match 'VOLUME_KMS') { 'KMS' }
                    else { 'Other/Unknown' }
-        Write-Host ('Key channel group: ' + $channel)
+
+        Write-Host ('Edition: ' + $p.Name)
+        Write-Host ('Channel: ' + $channel)
+        Write-Host ('Key last 5: ' + $p.PartialProductKey)
+
         if ($p.LicenseStatus -eq 1) {
-            Write-Host '[SKIP] Already activated - do not infer an activation error from the key type.'
-        } elseif ($reason -eq '0xC004C020') {
-            Write-Host '[C020] MAK activation count limit was exceeded.'
-            if ($channel -ne 'MAK') { Write-Host '[CHECK] The reported key channel is not MAK; verify the actual activation error.' }
-            Write-Host '[NEXT] Contact the volume licensing administrator or Microsoft for entitlement review.'
+            Write-Host 'Status: Activated'
+            continue
+        }
+
+        Write-Host 'Status: Not activated'
+        $reason = Show-ErrorCode $p.LicenseStatusReason
+        # This CIM field is a reported reason, not necessarily the most recent activation failure.
+        if ($reason -ne 'N/A' -and $reason -ne '0x00000000') {
+            Write-Host ('Reported reason: ' + $reason)
+        }
+        if ($reason -eq '0xC004C020') {
+            Write-Host '[C020] MAK activation limit exceeded; verify the volume license entitlement.'
+            if ($channel -ne 'MAK') {
+                Write-Host '[CHECK] Channel and reason differ; confirm the current activation error.'
+            }
         } elseif ($reason -eq '0xC004C008') {
             if ($channel -eq 'Retail') {
-                Write-Host '[RETAIL/C008] Retail key already in use or activation limit reached.'
+                Write-Host '[C008] Retail key use/activation limit issue.'
             } else {
-                Write-Host '[C008] Key use/activation limit issue. This error is not exclusive to Retail.'
+                Write-Host '[C008] Key use/activation limit issue (not Retail-specific).'
             }
-            Write-Host '[NEXT] Check the licensing terms and the Windows activation troubleshooter.'
         } elseif ($reason -eq '0xC004F074') {
-            Write-Host '[KMS] Cannot contact KMS activation service.'
+            Write-Host '[KMS] KMS activation service unavailable.'
         } elseif ($reason -eq '0xC004F050') {
             Write-Host '[KEY] Product key may be invalid.'
         } elseif ($reason -eq '0xC004C003') {
@@ -75,18 +78,7 @@ function Show-Diagnostics([object[]]$Products) {
         } elseif ($reason -eq '0xC004F212') {
             Write-Host '[KEY] Product key may not match Windows edition.'
         } else {
-            Write-Host '[INFO] Check Windows Activation settings for the latest error.'
-        }
-    }
-
-    Write-Host '------------------------------------------'
-    Write-Host '[INFO] Licensing-related services:'
-    foreach ($name in @('sppsvc','Winmgmt','LicenseManager','wuauserv')) {
-        $service = Get-Service -Name $name -ErrorAction SilentlyContinue
-        if ($service) {
-            Write-Host ('Service ' + $name + ': ' + $service.Status)
-        } else {
-            Write-Host ('Service ' + $name + ': not found')
+            Write-Host '[INFO] Check Windows Activation settings for the current error.'
         }
     }
 }
@@ -188,17 +180,9 @@ function Test-CidRequest([object[]]$Products) {
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     Write-Host '=========================================='
-    Write-Host '       DUYFIX v1.4 - DIAGNOSTIC'
+    Write-Host '       DUYFIX v1.4.1'
     Write-Host '=========================================='
-    Write-Host ('[MODE] ' + $Mode)
-    Write-Host '[SAFETY] No Windows activation changes in this release.'
     Write-Host ''
-
-    if ([string]::IsNullOrEmpty($PSCommandPath)) {
-        Write-Host '[STORAGE] In-memory mode. DUYFIX does not create local .cmd/.ps1 files.'
-    } else {
-        Write-Host '[STORAGE] Launched from a local PowerShell file.'
-    }
 
     if ($Mode -eq '--self-test') {
         Write-Host '[OK] Script parsed and started successfully.'
@@ -211,7 +195,7 @@ try {
     Write-Host ''
 
     if ($Mode -eq '--dry-run') {
-        Write-Host '[INFO] Official license expiration check:'
+        Write-Host '[LICENSE EXPIRY]'
         & "$env:windir\System32\cscript.exe" //nologo "$env:windir\System32\slmgr.vbs" /xpr
         Write-Host '[DONE] DRY RUN - NO SYSTEM CHANGES, NO PITVN REQUESTS.'
     } elseif ($Mode -eq '--api-test') {
