@@ -1,4 +1,4 @@
-# DUYFIX-PS1: 1.3
+# DUYFIX-PS1: 1.4
 # Windows activation diagnostic and voluntary PITVN API connectivity/CID test.
 # All modes are non-mutating: no /ipk, /upk, /cpky, /ato, /atp or service changes.
 param(
@@ -47,10 +47,25 @@ function Show-Diagnostics([object[]]$Products) {
         Write-Host ('License status: ' + $p.LicenseStatus)
         $reason = Show-ErrorCode $p.LicenseStatusReason
         Write-Host ('Reason code: ' + $reason)
+        $channel = if ($p.Description -match 'VOLUME_MAK') { 'MAK' }
+                   elseif ($p.Description -match 'RETAIL') { 'Retail' }
+                   elseif ($p.Description -match 'OEM') { 'OEM' }
+                   elseif ($p.Description -match 'VOLUME_KMS') { 'KMS' }
+                   else { 'Other/Unknown' }
+        Write-Host ('Key channel group: ' + $channel)
         if ($p.LicenseStatus -eq 1) {
-            Write-Host '[SKIP] Already activated - no action.'
+            Write-Host '[SKIP] Already activated - do not infer an activation error from the key type.'
+        } elseif ($reason -eq '0xC004C020') {
+            Write-Host '[C020] MAK activation count limit was exceeded.'
+            if ($channel -ne 'MAK') { Write-Host '[CHECK] The reported key channel is not MAK; verify the actual activation error.' }
+            Write-Host '[NEXT] Contact the volume licensing administrator or Microsoft for entitlement review.'
         } elseif ($reason -eq '0xC004C008') {
-            Write-Host '[C008] Check the product key activation limit and license entitlement.'
+            if ($channel -eq 'Retail') {
+                Write-Host '[RETAIL/C008] Retail key already in use or activation limit reached.'
+            } else {
+                Write-Host '[C008] Key use/activation limit issue. This error is not exclusive to Retail.'
+            }
+            Write-Host '[NEXT] Check the licensing terms and the Windows activation troubleshooter.'
         } elseif ($reason -eq '0xC004F074') {
             Write-Host '[KMS] Cannot contact KMS activation service.'
         } elseif ($reason -eq '0xC004F050') {
@@ -173,7 +188,7 @@ function Test-CidRequest([object[]]$Products) {
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     Write-Host '=========================================='
-    Write-Host '       DUYFIX v1.3 - DIAGNOSTIC'
+    Write-Host '       DUYFIX v1.4 - DIAGNOSTIC'
     Write-Host '=========================================='
     Write-Host ('[MODE] ' + $Mode)
     Write-Host '[SAFETY] No Windows activation changes in this release.'
