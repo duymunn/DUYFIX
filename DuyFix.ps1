@@ -1,8 +1,8 @@
-# DUYFIX-PS1: 1.2
+# DUYFIX-PS1: 1.3
 # Windows activation diagnostic and voluntary PITVN API connectivity/CID test.
 # All modes are non-mutating: no /ipk, /upk, /cpky, /ato, /atp or service changes.
 param(
-    [ValidateSet('--dry-run','--api-test','--cid-test')]
+    [ValidateSet('--dry-run','--api-test','--cid-test','--self-test')]
     [string]$Mode = '--dry-run'
 )
 
@@ -173,11 +173,23 @@ function Test-CidRequest([object[]]$Products) {
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     Write-Host '=========================================='
-    Write-Host '       DUYFIX v1.2 - DIAGNOSTIC'
+    Write-Host '       DUYFIX v1.3 - DIAGNOSTIC'
     Write-Host '=========================================='
     Write-Host ('[MODE] ' + $Mode)
     Write-Host '[SAFETY] No Windows activation changes in this release.'
     Write-Host ''
+
+    if ([string]::IsNullOrEmpty($PSCommandPath)) {
+        Write-Host '[STORAGE] In-memory mode. DUYFIX does not create local .cmd/.ps1 files.'
+    } else {
+        Write-Host '[STORAGE] Launched from a local PowerShell file.'
+    }
+
+    if ($Mode -eq '--self-test') {
+        Write-Host '[OK] Script parsed and started successfully.'
+        Write-Host '[DONE] No Windows activation changes. No PITVN requests.'
+        exit 0
+    }
 
     $products = @(Get-WindowsProducts)
     Show-Diagnostics -Products $products
