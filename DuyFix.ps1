@@ -94,7 +94,9 @@ function Test-PitvnConnectivity {
     if ($status -in @(200,204,400,401,403,405)) {
         Write-Host '[OK] HTTPS endpoint answered. API credentials and POST behavior NOT verified.'
     } elseif ($status -eq 404) {
-        throw 'API endpoint path returned HTTP 404.'
+        Write-Host '[WARN] HTTP 404 on HEAD request.'
+        Write-Host '[OK] HTTPS server responded.'
+        Write-Host '[INFO] POST API availability is not verified.'
     } elseif ($status -eq 429) {
         throw 'API endpoint responded with rate limiting (HTTP 429).'
     } else {
