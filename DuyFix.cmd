@@ -12,7 +12,7 @@ exit /b 2
 
 :MODE_OK
 set "DUYFIX_PS1=%TEMP%\DuyFix-v1.2-%RANDOM%%RANDOM%.ps1"
-set "PS_URL=https://raw.githubusercontent.com/duymunn/DUYFIX/main/DuyFix.ps1"
+set "PS_URL=https://raw.githubusercontent.com/duymunn/DUYFIX/main/DuyFix.ps1?v=1.2.1"
 
 curl.exe -fLsS --connect-timeout 10 --max-time 30 "%PS_URL%" -o "%DUYFIX_PS1%"
 if errorlevel 1 goto DOWNLOAD_ERROR
