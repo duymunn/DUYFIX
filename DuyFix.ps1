@@ -1,4 +1,4 @@
-# DUYFIX-PS1: 1.5
+# DUYFIX-PS1: 1.6
 # Windows activation diagnostic and voluntary PITVN API connectivity/CID test.
 # All modes are non-mutating: no /ipk, /upk, /cpky, /ato, /atp or service changes.
 param(
@@ -269,7 +269,7 @@ function Show-MainMenu {
     while ($true) {
         Clear-Host
         Write-Host '=============================================='
-        Write-Host '                DUYFIX v1.5'
+        Write-Host '                DUYFIX v1.6'
         Write-Host '=============================================='
         Write-Host '1. Active Windows (C020 / C008)'
         Write-Host '2. Active Office'
@@ -337,9 +337,15 @@ function Show-MainMenu {
                 Write-Host '[INFO] Chưa thực thi gỡ cài đặt; cần xác nhận phiên bản và nguồn cài.'
             }
             '7' {
-                Write-Host 'GỠ PHẦN MỀM 360'
-                [void](Show-Programs -Category '360')
-                Write-Host '[INFO] Chưa thực thi gỡ cài đặt; chỉ nhận diện các sản phẩm Qihoo/360.'
+                Write-Host 'GỠ PHẦN MỀM 360 - TỰ ĐỘNG'
+                Write-Host '[INFO] Tự nhận diện, gỡ bằng uninstaller và dọn thành phần còn sót.'
+                Write-Host '[INFO] Không tự khởi động lại máy.'
+                $url = 'https://raw.githubusercontent.com/duymunn/DUYFIX/aacc030016e9aae3a69f21412d1372fc585a98b4/Remove360.ps1'
+                $source = (Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 30).Content
+                if (-not $source.StartsWith('# DUYFIX-REMOVE360 1.6')) {
+                    throw 'Phiên bản module Remove360 không đúng. Không thực thi.'
+                }
+                & ([scriptblock]::Create($source))
             }
             default { Write-Host '[ERROR] Vui lòng chọn từ 0 đến 7.' }
         }
