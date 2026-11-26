@@ -1,4 +1,33 @@
-# DUYFIX v1.5 — Interactive menu
+# DUYFIX v1.6 — Menu & tự động gỡ 360
+
+## Lệnh CMD (menu)
+
+```cmd
+powershell -nop -c "iex (irm https://raw.githubusercontent.com/duymunn/DUYFIX/main/DuyFix.ps1)"
+```
+
+Menu mục **7. Gỡ phần mềm 360** gọi module `Remove360.ps1` bản cố định. Chỉ cần chọn 7, module sẽ tự:
+
+1. Yêu cầu UAC nếu chưa có quyền Administrator.
+2. Tìm ứng dụng Qihoo/360 từ uninstall registry (HKLM/HKCU, 32/64-bit).
+3. Chạy trình gỡ đã đăng ký; dùng chế độ im lặng nếu đăng ký hoặc là MSI/Inno với tham số có thể nhận diện.
+4. Nếu phần mềm vẫn đăng ký, dừng dọn cưỡng bức và thông báo. Một số bản 360 có thể cần bấm xác nhận trong trình gỡ.
+5. Khi ứng dụng đã gỡ, quét process/service/driver/task trỏ về thư mục 360 đã xác định; dọn đúng các thành phần đó, nhánh registry riêng của 360, thư mục 360 được chỉ định.
+6. Kiểm tra lại và thông báo thành phần còn sót, yêu cầu người dùng **tự reboot nếu cần**.
+
+**Không tự khởi động lại.** **Không dùng file EXE tham khảo**.
+
+Quan trọng: Đây là code chưa được kiểm thử chạy trên Windows có 360. Không thể cam kết xóa sạch 100% với mọi bản 360, nhất là driver tự bảo vệ, uninstaller yêu cầu thao tác, bản portable/Store hoặc các thư mục ngoài phạm vi. Chế độ này có thao tác xóa thực sự và có thể xóa cấu hình/dữ liệu cá nhân của sản phẩm 360 (như profile trình duyệt). Hãy thử trên máy ảo/snapshot hoặc thiết bị được phép thao tác; sao lưu dữ liệu quan trọng trước.
+
+Các mục 1–6 vẫn là phần kiểm tra và xem trước như v1.5, chưa tự kích hoạt hoặc thực hiện gỡ hàng loạt.
+
+## Bảo mật
+
+Không đưa PITVN API Key thật lên GitHub. Script từ nhánh `main` thay đổi theo commit; nên kiểm tra mã và dùng bản pin cố định trước khi triển khai rộng. Các lệnh tải chạy trực tiếp từ Internet có rủi ro chuỗi cung ứng.
+
+---
+
+# Lịch sử: DUYFIX v1.5 — Interactive menu
 
 Chạy từ CMD (hoặc PowerShell) bằng một lệnh; mặc định mở menu 7 chức năng:
 
