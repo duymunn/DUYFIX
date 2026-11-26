@@ -1,4 +1,31 @@
-# DUYFIX v1.4
+# DUYFIX v1.5 — Interactive menu
+
+Chạy từ CMD (hoặc PowerShell) bằng một lệnh; mặc định mở menu 7 chức năng:
+
+```cmd
+powershell -nop -c "iex (irm https://raw.githubusercontent.com/duymunn/DUYFIX/main/DuyFix.ps1)"
+```
+
+Các chức năng trong bản 1.5:
+1. Active Windows: chỉ chẩn đoán trạng thái/license và C020/C008; chưa kích hoạt
+2. Active Office: liệt kê phần mềm Office, thử đọc license với OSPP.VBS nếu có; chưa kích hoạt
+3. Xóa Windows key/crack: xem trước, không xóa
+4. Xóa Office key/crack: xem trước, không xóa
+5. Gỡ Office: liệt kê từ uninstall registry, chọn một hoặc ALL (xem trước), chưa gỡ
+6. Gỡ WPS Office: phát hiện từ uninstall registry, chưa gỡ
+7. Gỡ phần mềm 360: phát hiện từ uninstall registry, chưa gỡ
+
+0. Thoát.
+
+Đây là **bản menu/preview**, không thực hiện xóa key, file, task, service hoặc gỡ cài đặt. Hãy kiểm tra danh sách nhận diện trước khi thêm các thao tác xóa có xác nhận, sao lưu và biện pháp khôi phục. Bộ lọc danh sách phần mềm không bảo đảm phát hiện mọi loại cài đặt, đặc biệt ứng dụng Store, bản portable và thành phần lỗi.
+
+Các chế độ riêng của script vẫn có: `--dry-run`, `--api-test`, `--cid-test`, `--self-test`. Không thử nghiệm CID thật hay kích hoạt Windows/Office ở bản menu này.
+
+**Bảo mật:** Script tải và thực thi nội dung mới nhất trên `main`; kiểm tra nội dung mã nguồn trước khi chạy. Không được đưa API Key cá nhân lên repository. Dùng git commit cố định khi phát hành bản cho khách. Phần mềm có thể chạy trong RAM nhưng hệ thống vẫn có thể lưu nhật ký bảo mật.
+
+---
+
+# DUYFIX v1.5
 
 Windows activation diagnostics, optional PITVN endpoint connectivity test and CID-request test. **No Windows activation changes** in this version. Intended for appropriately licensed Windows machines.
 
