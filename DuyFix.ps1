@@ -340,7 +340,7 @@ function Show-MainMenu {
                 Write-Host 'GỠ PHẦN MỀM 360 - TỰ ĐỘNG'
                 Write-Host '[INFO] Tự nhận diện, gỡ bằng uninstaller và dọn thành phần còn sót.'
                 Write-Host '[INFO] Không tự khởi động lại máy.'
-                $url = 'https://raw.githubusercontent.com/duymunn/DUYFIX/aacc030016e9aae3a69f21412d1372fc585a98b4/Remove360.ps1'
+                $url = 'https://raw.githubusercontent.com/duymunn/DUYFIX/0ef00d051a868613d47b718ce0d74e5640166c17/Remove360.ps1'
                 $source = (Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 30).Content
                 if (-not $source.StartsWith('# DUYFIX-REMOVE360 1.6')) {
                     throw 'Phiên bản module Remove360 không đúng. Không thực thi.'
