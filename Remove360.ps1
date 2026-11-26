@@ -52,20 +52,24 @@ function Get-360Programs {
 function Get-Known360Roots {
     $pf86 = [Environment]::GetFolderPath('ProgramFilesX86')
     $pf64 = [Environment]::GetFolderPath('ProgramFiles')
-    $paths = @(
-        (Join-Path $pf86 '360'),
-        (Join-Path $pf64 '360'),
-        (Join-Path $env:ProgramData '360Safe'),
-        (Join-Path $env:ProgramData '360'),
-        (Join-Path $env:APPDATA '360Safe'),
-        (Join-Path $env:APPDATA '360se6'),
-        (Join-Path $env:APPDATA '360browser'),
-        (Join-Path $env:APPDATA '360GameAssistant'),
-        (Join-Path $env:APPDATA '360huabao'),
-        (Join-Path $env:LOCALAPPDATA '360Safe'),
-        (Join-Path $env:LOCALAPPDATA '360Chrome'),
-        (Join-Path $env:LOCALAPPDATA '360ChromeX')
-    )
+    $paths = @()
+    foreach ($base in @($pf86, $pf64, $env:ProgramData, $env:APPDATA, $env:LOCALAPPDATA)) {
+        if ([string]::IsNullOrWhiteSpace($base)) { continue }
+        if ($base -eq $pf86 -or $base -eq $pf64) {
+            $paths += (Join-Path $base '360')
+        } elseif ($base -eq $env:ProgramData) {
+            $paths += (Join-Path $base '360Safe')
+            $paths += (Join-Path $base '360')
+        } elseif ($base -eq $env:APPDATA) {
+            foreach ($name in @('360Safe','360se6','360browser','360GameAssistant','360huabao')) {
+                $paths += (Join-Path $base $name)
+            }
+        } else {
+            foreach ($name in @('360Safe','360Chrome','360ChromeX')) {
+                $paths += (Join-Path $base $name)
+            }
+        }
+    }
     # Also include the same precisely named vendor-owned folders in other local user profiles.
     foreach ($profile in @(Get-CimInstance Win32_UserProfile -ErrorAction SilentlyContinue | Where-Object { -not $_.Special -and $_.LocalPath })) {
         $home = $profile.LocalPath
@@ -255,8 +259,9 @@ function Remove-360Leftovers([string[]]$Roots) {
                 $script:Unresolved++
                 continue
             }
-            $links = @(Get-ChildItem -LiteralPath $root -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue)
-            if ($links.Count -gt 0) {
+            $linkScanErrors = @()
+            $links = @(Get-ChildItem -LiteralPath $root -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue -ErrorVariable +linkScanErrors)
+            if ($linkScanErrors.Count -gt 0 -or $links.Count -gt 0) {
                 Write-Host ('[WARN] Thư mục chứa liên kết: ' + $root)
                 $script:Unresolved++
                 continue
