@@ -1,9 +1,9 @@
-# DUYFIX-PS1: 1.4.1
+# DUYFIX-PS1: 1.5
 # Windows activation diagnostic and voluntary PITVN API connectivity/CID test.
 # All modes are non-mutating: no /ipk, /upk, /cpky, /ato, /atp or service changes.
 param(
-    [ValidateSet('--dry-run','--api-test','--cid-test','--self-test')]
-    [string]$Mode = '--dry-run'
+    [ValidateSet('--menu','--dry-run','--api-test','--cid-test','--self-test')]
+    [string]$Mode = '--menu'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -177,16 +177,192 @@ function Test-CidRequest([object[]]$Products) {
     Write-Host '[DONE] CID checked in memory only; not printed, saved or applied.'
 }
 
+
+# Read-only inventory. Never use Win32_Product, which can trigger MSI repair.
+function Get-InstalledPrograms {
+    $locations = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    $items = @()
+    foreach ($location in $locations) {
+        $items += @(Get-ItemProperty -Path $location -ErrorAction SilentlyContinue |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_.DisplayName) } |
+            ForEach-Object {
+                [pscustomobject]@{
+                    Name = [string]$_.DisplayName
+                    Version = [string]$_.DisplayVersion
+                    Publisher = [string]$_.Publisher
+                    Id = [string]$_.PSChildName
+                }
+            })
+    }
+    return @($items | Sort-Object Name, Version, Publisher, Id -Unique)
+}
+
+function Select-Programs([string]$Category) {
+    $all = @(Get-InstalledPrograms)
+    switch ($Category) {
+        'Office' {
+            $found = @($all | Where-Object {
+                $_.Publisher -match '(?i)Microsoft' -and
+                $_.Name -match '(?i)^(Microsoft (365|Office|Visio|Project)|Office (2010|2013|2016|2019|2021|2024|LTSC))'
+            })
+        }
+        'WPS' {
+            $found = @($all | Where-Object {
+                $_.Name -match '(?i)(WPS Office|Kingsoft Office)' -or
+                ($_.Publisher -match '(?i)Kingsoft' -and $_.Name -match '(?i)WPS')
+            })
+        }
+        '360' {
+            $found = @($all | Where-Object {
+                $_.Name -match '(?i)^(360 Total Security|360 Security|360 Safe|360 Browser|360 Driver|Qihoo 360)' -or
+                ($_.Publisher -match '(?i)(Qihoo|360 Security)' -and $_.Name -match '(?i)^(360|Qihoo)')
+            })
+        }
+        default { $found = @() }
+    }
+    return @($found)
+}
+
+function Wait-ForBack {
+    [void](Read-Host 'Nhấn Enter để quay lại menu')
+}
+
+function Show-Programs([string]$Category) {
+    $items = @(Select-Programs -Category $Category)
+    if ($items.Count -eq 0) {
+        Write-Host ('[INFO] Chưa phát hiện chương trình ' + $Category + ' trong danh sách gỡ cài đặt.')
+        Write-Host '[INFO] Một số thành phần có thể không đăng ký tại đây.'
+        return
+    }
+    for ($i = 0; $i -lt $items.Count; $i++) {
+        Write-Host ("{0}. {1}  {2}" -f ($i + 1), $items[$i].Name, $items[$i].Version)
+    }
+    return $items
+}
+
+function Show-OfficeLicenses {
+    $roots = @($env:ProgramFiles, [Environment]::GetFolderPath('ProgramFilesX86'))
+    $paths = @()
+    foreach ($root in $roots) {
+        if ([string]::IsNullOrWhiteSpace($root)) { continue }
+        foreach ($suffix in @('Microsoft Office\root\Office16\OSPP.VBS', 'Microsoft Office\Office16\OSPP.VBS', 'Microsoft Office\Office15\OSPP.VBS', 'Microsoft Office\Office14\OSPP.VBS')) {
+            $path = Join-Path $root $suffix
+            if (Test-Path -LiteralPath $path -PathType Leaf) { $paths += $path }
+        }
+    }
+    $paths = @($paths | Select-Object -Unique)
+    if ($paths.Count -eq 0) {
+        Write-Host '[INFO] Không tìm thấy ospp.vbs. Một số bản Microsoft 365 không dùng công cụ này.'
+        return
+    }
+    foreach ($path in $paths) {
+        Write-Host ('[READ ONLY] ' + $path)
+        & cscript.exe //nologo $path /dstatus
+    }
+}
+
+function Show-MainMenu {
+    while ($true) {
+        Clear-Host
+        Write-Host '=============================================='
+        Write-Host '                DUYFIX v1.5'
+        Write-Host '=============================================='
+        Write-Host '1. Active Windows (C020 / C008)'
+        Write-Host '2. Active Office'
+        Write-Host '3. Xóa key Windows, dọn công cụ crack'
+        Write-Host '4. Xóa key Office, dọn công cụ crack'
+        Write-Host '5. Gỡ Office (chọn bản giữ / bản xóa)'
+        Write-Host '6. Gỡ WPS Office'
+        Write-Host '7. Gỡ phần mềm 360'
+        Write-Host '0. Thoát'
+        Write-Host '=============================================='
+        $choice = Read-Host 'Chọn chức năng'
+        if ($choice -eq '0') { return }
+        Clear-Host
+        switch ($choice) {
+            '1' {
+                Write-Host 'ACTIVE WINDOWS'
+                Show-Diagnostics -Products @(Get-WindowsProducts)
+                Write-Host ''
+                Write-Host '[INFO] Chưa tự động kích hoạt. Kiểm thử CID vẫn tách riêng bằng --cid-test.'
+            }
+            '2' {
+                Write-Host 'ACTIVE OFFICE'
+                [void](Show-Programs -Category 'Office')
+                Write-Host ''
+                Show-OfficeLicenses
+                Write-Host '[INFO] Chưa có thao tác kích hoạt Office ở bản menu này.'
+            }
+            '3' {
+                Write-Host 'XÓA KEY WINDOWS / DỌN CRACK'
+                Show-Diagnostics -Products @(Get-WindowsProducts)
+                Write-Host ''
+                Write-Host '[PREVIEW] Xóa key có thể khiến Windows mất kích hoạt.'
+                Write-Host '[INFO] Chưa xóa key/tập tin nào. Không xóa hàng loạt task/service chưa xác minh.'
+            }
+            '4' {
+                Write-Host 'XÓA KEY OFFICE / DỌN CRACK'
+                Show-OfficeLicenses
+                Write-Host '[INFO] Chưa xóa key/tập tin nào. Cần xác định chính xác giấy phép.'
+            }
+            '5' {
+                Write-Host 'GỠ MICROSOFT OFFICE'
+                $apps = @(Show-Programs -Category 'Office')
+                if ($apps.Count -gt 0) {
+                    Write-Host ''
+                    Write-Host 'Chọn số bản muốn gỡ; ALL để chọn toàn bộ; 0 để giữ nguyên.'
+                    $select = (Read-Host 'Lựa chọn').Trim()
+                    if ($select -eq '0' -or $select -eq '') {
+                        Write-Host '[KEEP] Giữ lại toàn bộ.'
+                    } elseif ($select -ieq 'ALL') {
+                        Write-Host '[PREVIEW] Đã chọn tất cả bản Office liệt kê.'
+                    } else {
+                        $idx = 0
+                        if ([int]::TryParse($select, [ref]$idx) -and $idx -ge 1 -and $idx -le $apps.Count) {
+                            Write-Host ('[PREVIEW] Đã chọn: ' + $apps[$idx - 1].Name)
+                        } else {
+                            Write-Host '[CANCEL] Lựa chọn không hợp lệ.'
+                        }
+                    }
+                    Write-Host '[INFO] Chưa thực thi gỡ cài đặt. Đây là chế độ chọn trước.'
+                }
+            }
+            '6' {
+                Write-Host 'GỠ WPS OFFICE'
+                [void](Show-Programs -Category 'WPS')
+                Write-Host '[INFO] Chưa thực thi gỡ cài đặt; cần xác nhận phiên bản và nguồn cài.'
+            }
+            '7' {
+                Write-Host 'GỠ PHẦN MỀM 360'
+                [void](Show-Programs -Category '360')
+                Write-Host '[INFO] Chưa thực thi gỡ cài đặt; chỉ nhận diện các sản phẩm Qihoo/360.'
+            }
+            default { Write-Host '[ERROR] Vui lòng chọn từ 0 đến 7.' }
+        }
+        Write-Host ''
+        Wait-ForBack
+    }
+}
+
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     Write-Host '=========================================='
-    Write-Host '       DUYFIX v1.4.1'
+    Write-Host '       DUYFIX v1.5'
     Write-Host '=========================================='
     Write-Host ''
 
     if ($Mode -eq '--self-test') {
         Write-Host '[OK] Script parsed and started successfully.'
         Write-Host '[DONE] No Windows activation changes. No PITVN requests.'
+        exit 0
+    }
+
+    if ($Mode -eq '--menu') {
+        Show-MainMenu
         exit 0
     }
 
