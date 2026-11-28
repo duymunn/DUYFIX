@@ -16,5 +16,5 @@ exit /b 2
 rem Pin the script to an audited GitHub commit, rather than the moving main branch.
 rem The PowerShell source is loaded into memory; no .ps1 file is created.
 set "DUYFIX_MODE=%MODE%"
-powershell.exe -NoProfile -Command "$ErrorActionPreference='Stop'; try { $u='https://raw.githubusercontent.com/duymunn/DUYFIX/97ed0b194b615f003db62b4284f562c08b18a0aa/DuyFix.ps1'; $s=(Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 30).Content; if (-not $s.StartsWith('# DUYFIX-PS1: 1.7')) { throw 'Wrong DUYFIX PowerShell version' }; & ([scriptblock]::Create($s)) -Mode $env:DUYFIX_MODE } catch { Write-Host ('[ERROR] '+$_.Exception.Message); exit 13 }"
+powershell.exe -NoProfile -Command "$ErrorActionPreference='Stop'; try { $u='https://raw.githubusercontent.com/duymunn/DUYFIX/7f5aa83afbab8193f55ea4d257a7899e0af44ac1/DuyFix.ps1'; $s=(Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 30).Content; if (-not $s.StartsWith('# DUYFIX-PS1: 1.7')) { throw 'Wrong DUYFIX PowerShell version' }; & ([scriptblock]::Create($s)) -Mode $env:DUYFIX_MODE } catch { Write-Host ('[ERROR] '+$_.Exception.Message); exit 13 }"
 exit /b %ERRORLEVEL%
