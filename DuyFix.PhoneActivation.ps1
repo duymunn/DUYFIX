@@ -69,7 +69,7 @@ function Get-ConfirmationId([string]$Iid) {
         if ([string]::IsNullOrWhiteSpace($token)) {
             $secret = Read-Host 'PITVN API Key (an)' -AsSecureString
             if ($secret.Length -lt 8) { throw 'API Key khong hop le.' }
-            $cred = New-Object System.Management.Automation.PSCredential('pitvn', $secret)
+            $cred = [pscredential]::new('pitvn', $secret)
             $token = $cred.GetNetworkCredential().Password
         }
         try {
@@ -129,7 +129,7 @@ function Activate-WindowsRetail {
         Write-Host 'No Windows Retail product key is installed.'
         $secureKey = Read-Host 'Enter Retail product key (hidden)' -AsSecureString
         if ($secureKey.Length -eq 0) { return }
-        $credential = New-Object System.Management.Automation.PSCredential('product', $secureKey)
+        $credential = [pscredential]::new('product', $secureKey)
         $productKey = $credential.GetNetworkCredential().Password.Trim().ToUpperInvariant()
         if ($productKey -notmatch '^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$') {
             Write-Host 'Product Key format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
