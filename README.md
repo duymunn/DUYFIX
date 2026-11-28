@@ -9,7 +9,7 @@ The activation module supports the optional, **process-scoped** environment vari
 Example for a technician to use on one computer (enter the key at a hidden prompt):
 
 ```cmd
-powershell -NoProfile -Command "$s=Read-Host 'PITVN API Key' -AsSecureString; $c=New-Object System.Management.Automation.PSCredential('pitvn',$s); $env:DUYFIX_PITVN_API_KEY=$c.GetNetworkCredential().Password; try { iex (irm 'https://raw.githubusercontent.com/duymunn/DUYFIX/main/DuyFix.ps1') } finally { Remove-Item Env:\DUYFIX_PITVN_API_KEY -ErrorAction SilentlyContinue }"
+powershell -NoProfile -Command "$s=Read-Host 'PITVN API Key' -AsSecureString; $c=[pscredential]::new('pitvn',$s); $env:DUYFIX_PITVN_API_KEY=$c.GetNetworkCredential().Password; try { iex (irm 'https://raw.githubusercontent.com/duymunn/DUYFIX/main/DuyFix.ps1') } finally { Remove-Item Env:\DUYFIX_PITVN_API_KEY -ErrorAction SilentlyContinue }"
 ```
 
 **Limitation:** Environment variables configured this way work only in that one PowerShell process. For unattended deployment across many customer PCs *without exposing the provider key*, a protected server-side relay is needed (for example, a serverless function storing the PITVN key as a secret, authenticating technicians, and rate limiting). GitHub Actions secrets alone do not turn a static GitHub repository into such a relay.
