@@ -1,6 +1,7 @@
-# DUYFIX-PHONE: 1.7
+# DUYFIX-PHONE: 1.7.2
 # Windows / Office Retail phone activation with an existing licensed key.
-# No product-key installation, removal, KMS changes or license bypass.
+# The tool may install a user-supplied Retail key only with confirmation.
+# No license bypass; never embed provider credentials in this public file.
 param(
     [ValidateSet('Windows','Office')]
     [string]$Product = 'Windows'
@@ -60,12 +61,18 @@ function Get-ConfirmationId([string]$Iid) {
         if ((Read-Host 'Gui IID may nay den PITVN? Nhap YES') -cne 'YES') {
             throw 'Da huy gui IID.'
         }
-        $secret = Read-Host 'PITVN API Key (an)' -AsSecureString
-        if ($secret.Length -lt 8) { throw 'API Key khong hop le.' }
-        $cred = New-Object System.Management.Automation.PSCredential('pitvn', $secret)
-        $token = $null
-        try {
+        # Optionally load the API credential from the current process environment.
+        # The real key must never be committed into public source control.
+        $token = $env:DUYFIX_PITVN_API_KEY
+        $secret = $null
+        $cred = $null
+        if ([string]::IsNullOrWhiteSpace($token)) {
+            $secret = Read-Host 'PITVN API Key (an)' -AsSecureString
+            if ($secret.Length -lt 8) { throw 'API Key khong hop le.' }
+            $cred = New-Object System.Management.Automation.PSCredential('pitvn', $secret)
             $token = $cred.GetNetworkCredential().Password
+        }
+        try {
             $body = @{ iid = $Iid } | ConvertTo-Json -Compress
             try {
                 $reply = Invoke-RestMethod -Uri $ApiUrl -Method Post -ContentType 'application/json' -Body $body -Headers @{ Authorization = ('Bearer ' + $token) } -MaximumRedirection 0 -TimeoutSec 45 -ErrorAction Stop
