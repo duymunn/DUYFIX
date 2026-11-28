@@ -267,7 +267,7 @@ function Show-OfficeLicenses {
 
 function Invoke-PhoneActivation([string]$Product) {
     # Load the reviewed module at a fixed commit, then invoke with explicit product.
-    $url = 'https://raw.githubusercontent.com/duymunn/DUYFIX/34a63842681d5fd87c22ab3ae5cd4bdd1eff3f69/DuyFix.PhoneActivation.ps1'
+    $url = 'https://raw.githubusercontent.com/duymunn/DUYFIX/629454d67959aa4e2d52a8d6f0781cc3debaa97c/DuyFix.PhoneActivation.ps1'
     $source = (Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 30 -ErrorAction Stop).Content
     if (-not $source.StartsWith('# DUYFIX-PHONE: 1.7.2')) {
         throw 'Phien ban PhoneActivation khong dung; dung lai.'
