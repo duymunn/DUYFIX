@@ -1,4 +1,4 @@
-# DUYFIX-PS1: 1.6
+# DUYFIX-PS1: 1.7
 # Windows activation diagnostic and voluntary PITVN API connectivity/CID test.
 # All modes are non-mutating: no /ipk, /upk, /cpky, /ato, /atp or service changes.
 param(
@@ -265,38 +265,37 @@ function Show-OfficeLicenses {
     }
 }
 
+function Invoke-PhoneActivation([string]$Product) {
+    # Load the reviewed module at a fixed commit, then invoke with explicit product.
+    $url = 'https://raw.githubusercontent.com/duymunn/DUYFIX/dc3278fb3d2e3aae856b67e9773f4bedca66b25c/DuyFix.PhoneActivation.ps1'
+    $source = (Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 30 -ErrorAction Stop).Content
+    if (-not $source.StartsWith('# DUYFIX-PHONE: 1.7')) {
+        throw 'Phien ban PhoneActivation khong dung; dung lai.'
+    }
+    & ([scriptblock]::Create($source)) -Product $Product
+}
+
 function Show-MainMenu {
     while ($true) {
         Clear-Host
         Write-Host '=============================================='
-        Write-Host '                DUYFIX v1.6'
+        Write-Host '                DUYFIX v1.7'
         Write-Host '=============================================='
-        Write-Host '1. Active Windows (C020 / C008)'
-        Write-Host '2. Active Office'
+        Write-Host '1. Active Windows (Retail - Phone)'
+        Write-Host '2. Active Office (Retail - Phone)'
         Write-Host '3. Xóa key Windows, dọn công cụ crack'
         Write-Host '4. Xóa key Office, dọn công cụ crack'
         Write-Host '5. Gỡ Office (chọn bản giữ / bản xóa)'
-        Write-Host '6. Gỡ WPS Office'
-        Write-Host '7. Gỡ phần mềm 360'
+        Write-Host '6. Gỡ WPS Office [TAM DUNG]'
+        Write-Host '7. Gỡ phần mềm 360 [TAM DUNG]'
         Write-Host '0. Thoát'
         Write-Host '=============================================='
         $choice = Read-Host 'Chọn chức năng'
         if ($choice -eq '0') { return }
         Clear-Host
         switch ($choice) {
-            '1' {
-                Write-Host 'ACTIVE WINDOWS'
-                Show-Diagnostics -Products @(Get-WindowsProducts)
-                Write-Host ''
-                Write-Host '[INFO] Chưa tự động kích hoạt. Kiểm thử CID vẫn tách riêng bằng --cid-test.'
-            }
-            '2' {
-                Write-Host 'ACTIVE OFFICE'
-                [void](Show-Programs -Category 'Office')
-                Write-Host ''
-                Show-OfficeLicenses
-                Write-Host '[INFO] Chưa có thao tác kích hoạt Office ở bản menu này.'
-            }
+            '1' { Invoke-PhoneActivation -Product 'Windows' }
+            '2' { Invoke-PhoneActivation -Product 'Office' }
             '3' {
                 Write-Host 'XÓA KEY WINDOWS / DỌN CRACK'
                 Show-Diagnostics -Products @(Get-WindowsProducts)
@@ -331,22 +330,8 @@ function Show-MainMenu {
                     Write-Host '[INFO] Chưa thực thi gỡ cài đặt. Đây là chế độ chọn trước.'
                 }
             }
-            '6' {
-                Write-Host 'GỠ WPS OFFICE'
-                [void](Show-Programs -Category 'WPS')
-                Write-Host '[INFO] Chưa thực thi gỡ cài đặt; cần xác nhận phiên bản và nguồn cài.'
-            }
-            '7' {
-                Write-Host 'GỠ PHẦN MỀM 360 - TỰ ĐỘNG'
-                Write-Host '[INFO] Tự nhận diện, gỡ bằng uninstaller và dọn thành phần còn sót.'
-                Write-Host '[INFO] Không tự khởi động lại máy.'
-                $url = 'https://raw.githubusercontent.com/duymunn/DUYFIX/0ef00d051a868613d47b718ce0d74e5640166c17/Remove360.ps1'
-                $source = (Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 30).Content
-                if (-not $source.StartsWith('# DUYFIX-REMOVE360 1.6')) {
-                    throw 'Phiên bản module Remove360 không đúng. Không thực thi.'
-                }
-                & ([scriptblock]::Create($source))
-            }
+            '6' { Write-Host '[PAUSED] Chuc nang go WPS dang tam dung.' }
+            '7' { Write-Host '[PAUSED] Chuc nang go 360 dang tam dung.' }
             default { Write-Host '[ERROR] Vui lòng chọn từ 0 đến 7.' }
         }
         Write-Host ''
@@ -357,7 +342,7 @@ function Show-MainMenu {
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     Write-Host '=========================================='
-    Write-Host '       DUYFIX v1.5'
+    Write-Host '       DUYFIX v1.7'
     Write-Host '=========================================='
     Write-Host ''
 
