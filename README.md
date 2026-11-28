@@ -1,5 +1,19 @@
 # DUYFIX v1.7 - Windows / Office Retail Phone Activation
 
+## PITVN API Key: secure configuration
+
+DUYFIX is a **public** GitHub repository. Do **not** commit a live PITVN API Key or put it in `DuyFix.ps1`, `DuyFix.PhoneActivation.ps1`, or the README. Git history and caches can preserve leaked credentials even if subsequently removed.
+
+The activation module supports the optional, **process-scoped** environment variable `DUYFIX_PITVN_API_KEY`. When set, it is used automatically after the user explicitly approves sending the installation ID (IID); otherwise DUYFIX prompts for the key securely. The variable is not written into repository files or into persistent system/user environment variables.
+
+Example for a technician to use on one computer (enter the key at a hidden prompt):
+
+```cmd
+powershell -NoProfile -Command "$s=Read-Host 'PITVN API Key' -AsSecureString; $c=New-Object System.Management.Automation.PSCredential('pitvn',$s); $env:DUYFIX_PITVN_API_KEY=$c.GetNetworkCredential().Password; try { iex (irm 'https://raw.githubusercontent.com/duymunn/DUYFIX/main/DuyFix.ps1') } finally { Remove-Item Env:\DUYFIX_PITVN_API_KEY -ErrorAction SilentlyContinue }"
+```
+
+**Limitation:** Environment variables configured this way work only in that one PowerShell process. For unattended deployment across many customer PCs *without exposing the provider key*, a protected server-side relay is needed (for example, a serverless function storing the PITVN key as a secret, authenticating technicians, and rate limiting). GitHub Actions secrets alone do not turn a static GitHub repository into such a relay.
+
 ## Start from CMD (Run as Administrator)
 
 ```cmd
