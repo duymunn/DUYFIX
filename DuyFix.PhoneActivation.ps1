@@ -1,7 +1,6 @@
-
 # DUYFIX-PHONE: 1.7
-# File: DuyFix.PhoneActivation.ps1
-
+# Windows / Office Retail phone activation with an existing licensed key.
+# No product-key installation, removal, KMS changes or license bypass.
 param(
     [ValidateSet('Windows','Office')]
     [string]$Product = 'Windows'
@@ -12,327 +11,231 @@ $ApiUrl = 'https://tritran.pitvncommunity.com/api/cid'
 $WindowsAppId = '55c92734-d682-4d71-983e-d6ec3f16059f'
 
 function Test-Admin {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-    return $principal.IsInRole(
-        [Security.Principal.WindowsBuiltInRole]::Administrator
-    )
+    $p = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
 function Invoke-Cscript {
-    param(
-        [string]$Path,
-        [string[]]$Arguments
-    )
-
-    $output = & "$env:windir\System32\cscript.exe" `
-        //nologo $Path @Arguments 2>&1
-
-    $text = $output | Out-String
-
+    param([string]$Path, [string[]]$Arguments)
+    $out = (& "$env:windir\System32\cscript.exe" //nologo $Path @Arguments 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0) {
-        throw "Windows Script Host error: $text"
+        throw ('Windows Script Host error (exit ' + $LASTEXITCODE + '): ' + $out.Trim())
     }
-
-    return $text
+    return $out
 }
 
-function Get-Iid {
-    param([string]$Text)
+function Convert-ValidIid([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+    if ($Value -notmatch '^[0-9 \-]+$') { return $null }
+    $digits = $Value -replace '[ \-]', ''
+    if ($digits.Length -lt 45 -or $digits.Length -gt 90) { return $null }
+    return $digits
+}
 
-    $matches = [regex]::Matches(
-        $Text,
-        '(?im)^\s*Installation ID\s*:\s*([\d\s-]{40,110})'
-    )
-
-    $values = @(
-        foreach ($match in $matches) {
-            $match.Groups[1].Value -replace '\D', ''
+function Get-IidFromText([string]$Text) {
+    $ids = @(
+        foreach ($line in ($Text -split '\r?\n')) {
+            $m = [regex]::Match($line, '^[ \t]*Installation[ \t]+ID[ \t]*:[ \t]*([0-9][0-9 \-]*)[ \t]*$', 'IgnoreCase')
+            if ($m.Success) {
+                $candidate = Convert-ValidIid $m.Groups[1].Value
+                if ($candidate) { $candidate }
+            }
         }
     ) | Select-Object -Unique
-
-    if (@($values).Count -ne 1) {
-        throw 'Khong xac dinh duoc duy nhat mot IID.'
+    if (@($ids).Count -ne 1) {
+        throw 'Không đọc được duy nhất một Installation ID. Vui lòng kiểm tra kích hoạt thủ công.'
     }
-
-    $iid = [string]$values[0]
-
-    if ($iid.Length -lt 45 -or $iid.Length -gt 90) {
-        throw 'Installation ID khong hop le.'
-    }
-
-    return $iid
+    return [string]$ids[0]
 }
 
-function Get-Cid {
-    param([string]$Iid)
-
+function Get-ConfirmationId([string]$Iid) {
     Write-Host ''
-    Write-Host '1. Tu dong lay CID qua PITVN'
-    Write-Host '2. Nhap CID thu cong'
-    Write-Host '0. Huy'
+    Write-Host '1. Lay CID qua PITVN API'
+    Write-Host '2. Nhap CID da duoc cap hop le'
+    Write-Host '0. Quay lai'
     $choice = Read-Host 'Chon'
+    if ($choice -eq '0') { throw 'Da huy yeu cau.' }
 
-    switch ($choice) {
-        '1' {
-            Write-Host '[INFO] IID se duoc gui den PITVN.'
-            $confirm = Read-Host 'Dong y? Nhap YES'
-
-            if ($confirm -cne 'YES') {
-                throw 'Da huy yeu cau.'
-            }
-
-            $secure = Read-Host 'PITVN API Key' -AsSecureString
-
-            if ($secure.Length -lt 8) {
-                throw 'API Key khong hop le.'
-            }
-
-            $credential = [pscredential]::new('pitvn', $secure)
-            $token = $credential.GetNetworkCredential().Password
-
+    if ($choice -eq '1') {
+        if ((Read-Host 'Gui IID may nay den PITVN? Nhap YES') -cne 'YES') {
+            throw 'Da huy gui IID.'
+        }
+        $secret = Read-Host 'PITVN API Key (an)' -AsSecureString
+        if ($secret.Length -lt 8) { throw 'API Key khong hop le.' }
+        $cred = New-Object System.Management.Automation.PSCredential('pitvn', $secret)
+        $token = $null
+        try {
+            $token = $cred.GetNetworkCredential().Password
+            $body = @{ iid = $Iid } | ConvertTo-Json -Compress
             try {
-                $body = @{ iid = $Iid } | ConvertTo-Json -Compress
-
-                $response = Invoke-RestMethod `
-                    -Uri $ApiUrl `
-                    -Method Post `
-                    -Headers @{ Authorization = "Bearer $token" } `
-                    -ContentType 'application/json' `
-                    -Body $body `
-                    -TimeoutSec 45
-
-                $cid = [string]$response.cid
+                $reply = Invoke-RestMethod -Uri $ApiUrl -Method Post -ContentType 'application/json' -Body $body -Headers @{ Authorization = ('Bearer ' + $token) } -MaximumRedirection 0 -TimeoutSec 45 -ErrorAction Stop
+            } catch {
+                $response = $_.Exception.Response
+                if ($null -ne $response) {
+                    $status = [int]$response.StatusCode
+                    throw ('PITVN API trả về HTTP ' + $status + '. Kiểm tra API Key, quyền truy cập hoặc hạn mức.')
+                }
+                throw 'Khong the goi PITVN API (mang, TLS hoac timeout).'
             }
-            finally {
-                $token = $null
-                $credential = $null
-                $secure = $null
-            }
+            if ($null -eq $reply -or $null -eq $reply.cid) { throw 'PITVN khong tra ve truong cid.' }
+            $rawCid = [string]$reply.cid
+        } finally {
+            $token = $null
+            $cred = $null
+            $secret = $null
         }
-
-        '2' {
-            $cid = Read-Host 'Nhap Confirmation ID'
-        }
-
-        default {
-            throw 'Da huy kich hoat.'
-        }
+    } elseif ($choice -eq '2') {
+        $rawCid = Read-Host 'Nhap Confirmation ID'
+    } else {
+        throw 'Lua chon khong hop le.'
     }
 
-    $cid = $cid -replace '\D', ''
-
+    if ($rawCid -notmatch '^[0-9 \-]+$') {
+        throw 'Confirmation ID khong phai chuoi so hop le.'
+    }
+    $cid = $rawCid -replace '[ \-]', ''
     if ($cid.Length -notin @(48,54)) {
-        throw 'CID khong dung dinh dang du kien.'
+        throw 'Confirmation ID phai co 48 hoac 54 chu so.'
     }
-
     return $cid
 }
 
-function Activate-WindowsRetail {
-    Write-Host '=== ACTIVE WINDOWS RETAIL ==='
-
-    $products = @(
-        Get-CimInstance SoftwareLicensingProduct |
-        Where-Object {
-            $_.ApplicationID -eq $WindowsAppId -and
-            $_.PartialProductKey -and
-            $_.Name -like 'Windows*'
-        }
-    )
-
-    if (@($products | Where-Object LicenseStatus -eq 1).Count -gt 0) {
-        Write-Host '[OK] Windows da kich hoat. Bo qua.'
-        return
-    }
-
-    $retail = @(
-        $products | Where-Object {
-            $_.LicenseStatus -ne 1 -and
-            $_.Description -match '(?i)RETAIL' -and
-            $_.Description -notmatch '(?i)MAK|VOLUME'
-        }
-    )
-
-    if ($retail.Count -ne 1) {
-        throw 'Khong tim thay duy nhat mot giay phep Windows Retail chua kich hoat.'
-    }
-
-    Write-Host ('Key last 5: ' + $retail[0].PartialProductKey)
-
-    $iid = ([string]$retail[0].OfflineInstallationId) -replace '\D', ''
-
-    if ($iid.Length -lt 45 -or $iid.Length -gt 90) {
-        $slmgr = "$env:windir\System32\slmgr.vbs"
-        $result = Invoke-Cscript -Path $slmgr -Arguments @('/dti')
-        $iid = Get-Iid -Text $result
-    }
-
-    Write-Host '[OK] Da lay Installation ID.'
-    $cid = Get-Cid -Iid $iid
-
-    $slmgr = "$env:windir\System32\slmgr.vbs"
-    [void](Invoke-Cscript -Path $slmgr -Arguments @('/atp', $cid))
-
-    $verified = @(
-        Get-CimInstance SoftwareLicensingProduct |
-        Where-Object {
-            $_.ApplicationID -eq $WindowsAppId -and
-            $_.ID -eq $retail[0].ID -and
-            $_.LicenseStatus -eq 1
-        }
-    )
-
-    if ($verified.Count -eq 1) {
-        Write-Host '[SUCCESS] Windows da kich hoat.'
-    }
-    else {
-        Write-Host '[FAILED] Chua xac minh duoc kich hoat Windows.'
+function Confirm-Activation {
+    if ((Read-Host 'Nap CID cho giay phep hien tai? Nhap APPLY') -cne 'APPLY') {
+        throw 'Da huy nap CID. Khong thay doi giay phep.'
     }
 }
 
-function Get-OfficeScripts {
-    $roots = @(
-        $env:ProgramFiles,
-        [Environment]::GetFolderPath('ProgramFilesX86')
+function Activate-WindowsRetail {
+    Write-Host '=== WINDOWS RETAIL - PHONE ACTIVATION ==='
+    $products = @(
+        Get-CimInstance -ClassName SoftwareLicensingProduct -ErrorAction Stop |
+        Where-Object { $_.ApplicationID -eq $WindowsAppId -and $_.PartialProductKey -and $_.Name -like 'Windows*' -and -not $_.LicenseIsAddon }
     )
+    if (@($products | Where-Object { $_.LicenseStatus -eq 1 }).Count -gt 0) {
+        Write-Host '[SKIP] Windows da kich hoat. Khong thay doi.'
+        return
+    }
 
+    $pending = @($products | Where-Object { $_.LicenseStatus -ne 1 -and $_.Description -match '(?i)RETAIL' -and $_.Description -notmatch '(?i)VOLUME|MAK|KMS' })
+    if ($pending.Count -ne 1) {
+        throw 'Can duy nhat mot giay phep Windows Retail chua kich hoat. Khong xu ly MAK/KMS.'
+    }
+
+    $target = $pending[0]
+    $activationId = [string]$target.ID
+    Write-Host ('Windows: ' + $target.Name)
+    Write-Host ('Retail key last 5: ' + $target.PartialProductKey)
+    $iid = Convert-ValidIid ([string]$target.OfflineInstallationId)
+    if (-not $iid) {
+        $iidText = Invoke-Cscript -Path "$env:windir\System32\slmgr.vbs" -Arguments @('/dti', $activationId)
+        $iid = Get-IidFromText $iidText
+    }
+    Write-Host '[OK] Da lay IID.'
+    $cid = Get-ConfirmationId $iid
+    Confirm-Activation
+    [void](Invoke-Cscript -Path "$env:windir\System32\slmgr.vbs" -Arguments @('/atp', $cid, $activationId))
+
+    $licensed = @(Get-CimInstance -ClassName SoftwareLicensingProduct -ErrorAction Stop |
+        Where-Object { $_.ApplicationID -eq $WindowsAppId -and $_.ID -eq $activationId -and $_.LicenseStatus -eq 1 })
+    if ($licensed.Count -eq 0) {
+        throw 'Windows chua bao LicenseStatus=1. Can kiem tra Activation Settings.'
+    }
+    Write-Host '[SUCCESS] Windows da kich hoat.'
+}
+
+function Get-OfficeScripts {
+    $roots = @($env:ProgramFiles, [Environment]::GetFolderPath('ProgramFilesX86'))
     $suffixes = @(
         'Microsoft Office\root\Office16\OSPP.VBS',
         'Microsoft Office\Office16\OSPP.VBS',
         'Microsoft Office\Office15\OSPP.VBS',
         'Microsoft Office\Office14\OSPP.VBS'
     )
-
-    foreach ($root in $roots) {
-        if (-not $root) { continue }
-
-        foreach ($suffix in $suffixes) {
-            $path = Join-Path $root $suffix
-
-            if (Test-Path -LiteralPath $path -PathType Leaf) {
-                $path
+    $found = @(
+        foreach ($root in $roots) {
+            if ([string]::IsNullOrWhiteSpace($root)) { continue }
+            foreach ($suffix in $suffixes) {
+                $path = Join-Path $root $suffix
+                if (Test-Path -LiteralPath $path -PathType Leaf) { $path }
             }
         }
-    }
+    )
+    return @($found | Select-Object -Unique)
 }
 
-function Get-OfficeRecords {
-    param([string]$Ospp)
-
+function Get-OfficeRecords([string]$Ospp) {
     $text = Invoke-Cscript -Path $Ospp -Arguments @('/dstatus')
-    $sections = [regex]::Split($text, '(?im)(?=^\s*SKU ID:)')
-
+    $sections = [regex]::Split($text, '(?im)(?=^[ \t]*SKU ID:)')
     foreach ($section in $sections) {
-        $sku = [regex]::Match(
-            $section, '(?im)^\s*SKU ID:\s*([0-9a-f-]{36})'
-        ).Groups[1].Value
-
-        if (-not $sku) { continue }
-
-        $description = [regex]::Match(
-            $section, '(?im)^\s*LICENSE DESCRIPTION:\s*(.+)$'
-        ).Groups[1].Value
-
-        $status = [regex]::Match(
-            $section, '(?im)^\s*LICENSE STATUS:\s*(.+)$'
-        ).Groups[1].Value
-
+        $skuMatch = [regex]::Match($section, '(?im)^[ \t]*SKU ID:[ \t]*([0-9a-f-]{36})[ \t]*$', 'IgnoreCase')
+        if (-not $skuMatch.Success) { continue }
+        $descMatch = [regex]::Match($section, '(?im)^[ \t]*LICENSE DESCRIPTION:[ \t]*(.+)$', 'IgnoreCase')
+        $nameMatch = [regex]::Match($section, '(?im)^[ \t]*LICENSE NAME:[ \t]*(.+)$', 'IgnoreCase')
+        $statusMatch = [regex]::Match($section, '(?im)^[ \t]*LICENSE STATUS:[ \t]*(.+)$', 'IgnoreCase')
         [pscustomobject]@{
-            Sku = $sku
-            Description = $description
-            Status = $status
+            Sku = $skuMatch.Groups[1].Value
+            Description = $descMatch.Groups[1].Value.Trim()
+            Name = $nameMatch.Groups[1].Value.Trim()
+            Status = $statusMatch.Groups[1].Value.Trim()
             Ospp = $Ospp
         }
     }
 }
 
 function Activate-OfficeRetail {
-    Write-Host '=== ACTIVE OFFICE RETAIL ==='
-
-    $scripts = @(Get-OfficeScripts | Select-Object -Unique)
-
+    Write-Host '=== OFFICE RETAIL - PHONE ACTIVATION ==='
+    $scripts = @(Get-OfficeScripts)
     if ($scripts.Count -eq 0) {
-        throw 'Khong tim thay ospp.vbs. Ban Office nay co the khong ho tro.'
+        throw 'Khong co ospp.vbs. Microsoft 365 Apps dang thue bao khong ho tro.'
     }
-
     $records = @(
-        foreach ($script in $scripts) {
-            Get-OfficeRecords -Ospp $script
-        }
+        foreach ($script in $scripts) { Get-OfficeRecords $script }
     )
+    $retail = @($records | Where-Object {
+        $_.Description -match '(?i)RETAIL' -and $_.Description -notmatch '(?i)VOLUME|MAK|KMS'
+    } | Sort-Object Sku, Ospp -Unique)
+    if ($retail.Count -eq 0) { throw 'Khong co Office Retail su dung ospp.vbs.' }
 
-    $retail = @(
-        $records | Where-Object {
-            $_.Description -match '(?i)RETAIL' -and
-            $_.Description -notmatch '(?i)MAK|VOLUME'
-        }
-    )
-
-    if ($retail.Count -eq 0) {
-        throw 'Khong tim thay giay phep Office Retail qua OSPP.'
-    }
-
-    $pending = @(
-        $retail | Where-Object {
-            $_.Status -notmatch '(?i)---LICENSED---'
-        }
-    )
-
+    $pending = @($retail | Where-Object { $_.Status -notmatch '(?i)---LICENSED---' })
     if ($pending.Count -eq 0) {
-        Write-Host '[OK] Office Retail da kich hoat.'
+        Write-Host '[SKIP] Office Retail da kich hoat.'
         return
     }
-
-    if ($pending.Count -ne 1) {
-        throw 'Co nhieu giay phep Office chua kich hoat. Can chon dung ban.'
-    }
-
-    $target = $pending[0]
-    Write-Host ('Office: ' + $target.Description)
-
-    $output = Invoke-Cscript `
-        -Path $target.Ospp `
-        -Arguments @('/dinstid')
-
-    $iid = Get-Iid -Text $output
-    Write-Host '[OK] Da lay Installation ID.'
-
-    $cid = Get-Cid -Iid $iid
-
-    [void](Invoke-Cscript `
-        -Path $target.Ospp `
-        -Arguments @("/actcid:$cid"))
-
-    $after = @(Get-OfficeRecords -Ospp $target.Ospp)
-
-    $activated = @(
-        $after | Where-Object {
-            $_.Sku -eq $target.Sku -and
-            $_.Status -match '(?i)---LICENSED---'
+    if ($pending.Count -gt 1) {
+        Write-Host 'Cac giay phep Office Retail chua kich hoat:'
+        for ($i = 0; $i -lt $pending.Count; $i++) {
+            Write-Host ('{0}. {1}' -f ($i + 1), $pending[$i].Name)
         }
-    )
+        $selection = 0
+        $answer = Read-Host 'Chon so giay phep (0: huy)'
+        if (-not [int]::TryParse($answer, [ref]$selection) -or $selection -lt 1 -or $selection -gt $pending.Count) {
+            throw 'Da huy. Khong thay doi giay phep Office.'
+        }
+        $target = $pending[$selection - 1]
+    } else {
+        $target = $pending[0]
+    }
 
-    if ($activated.Count -eq 1) {
-        Write-Host '[SUCCESS] Office da kich hoat.'
+    Write-Host ('Office: ' + $target.Name)
+    $iidText = Invoke-Cscript -Path $target.Ospp -Arguments @('/dinstid')
+    $iid = Get-IidFromText $iidText
+    Write-Host '[OK] Da lay IID.'
+    $cid = Get-ConfirmationId $iid
+    Confirm-Activation
+    [void](Invoke-Cscript -Path $target.Ospp -Arguments @(('/actcid:' + $cid)))
+    $statusNow = @(Get-OfficeRecords $target.Ospp | Where-Object { $_.Sku -eq $target.Sku -and $_.Status -match '(?i)---LICENSED---' })
+    if ($statusNow.Count -eq 0) {
+        throw 'Office chua bao trang thai LICENSED. Kiem tra Activation trong Office.'
     }
-    else {
-        Write-Host '[FAILED] Chua xac minh duoc kich hoat Office.'
-    }
+    Write-Host '[SUCCESS] Office da kich hoat.'
 }
 
 try {
-    if (-not (Test-Admin)) {
-        throw 'Can mo CMD bang quyen Administrator.'
-    }
-
-    if ($Product -eq 'Windows') {
-        Activate-WindowsRetail
-    }
-    else {
-        Activate-OfficeRetail
-    }
-}
-catch {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    if (-not (Test-Admin)) { throw 'Hay mo CMD bang Run as administrator.' }
+    if ($Product -eq 'Windows') { Activate-WindowsRetail }
+    else { Activate-OfficeRetail }
+} catch {
     Write-Host ('[ERROR] ' + $_.Exception.Message)
 }
