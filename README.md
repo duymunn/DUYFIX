@@ -1,4 +1,36 @@
-# DUYFIX v1.6 — Menu & tự động gỡ 360
+# DUYFIX v1.7 - Windows / Office Retail Phone Activation
+
+## Start from CMD (Run as Administrator)
+
+```cmd
+powershell -nop -c "iex (irm https://raw.githubusercontent.com/duymunn/DUYFIX/main/DuyFix.ps1)"
+```
+
+Menu:
+1. Active Windows (Retail - Phone)
+2. Active Office (Retail - Phone)
+3. Windows license cleanup preview (no removal)
+4. Office license cleanup preview (no removal)
+5. Office uninstall preview (no removal)
+6. WPS removal **PAUSED** (does not execute)
+7. 360 removal **PAUSED** (does not execute)
+0. Exit
+
+### Phone activation
+
+Module: `DuyFix.PhoneActivation.ps1`, fetched from an immutable GitHub commit. Existing **Retail** product keys only. No key installation or key removal. Windows uses the installed licensing product's OfflineInstallationId (fallback: `slmgr.vbs /dti <ActivationID>`) and `slmgr.vbs /atp <CID> <ActivationID>`. Office checks suitable OSPP.VBS Retail records, uses `/dinstid` and `/actcid:<CID>`. Microsoft 365 subscriptions are not supported by this OSPP flow.
+
+For both paths, the user chooses a CID from PITVN (after explicitly approving IID transfer) or enters a legitimately obtained CID. The user must type `APPLY` to install the CID. The program checks the corresponding license afterwards. An authenticated PITVN POST has **not** been tested on a real target PC.
+
+Protect API keys: enter when prompted; never commit them to public GitHub. The tool cannot guarantee Microsoft will accept a CID, even when correctly formatted. Follow the applicable license terms and check official activation status.
+
+### Testing and safety
+
+**No live Windows/Office activation test has been performed for v1.7.** Review the module before using on customer devices, back up where appropriate, and test only on properly licensed, authorized systems. The script downloaded from the moving `main` branch should not be used in untrusted environments. Antivirus may block remote PowerShell execution.
+
+---
+
+# Archive: DUYFIX v1.6 (previous design; 360 now paused)
 
 ## Lệnh CMD (menu)
 
