@@ -120,157 +120,41 @@ function Activate-WindowsRetail {
     $pending = @($products | Where-Object { $_.LicenseStatus -ne 1 -and $_.Description -match '(?i)RETAIL' -and $_.Description -notmatch '(?i)VOLUME|MAK|KMS' })
     if ($pending.Count -eq 0) {
         Write-Host 'No Windows Retail product key is installed.'
-        $secureKey = Read-Host 'Enter your Retail product key (hidden; Enter to cancel)' -AsSecureString
+        $secureKey = Read-Host 'Enter Retail product key (hidden)' -AsSecureString
         if ($secureKey.Length -eq 0) { return }
-        $keyCredential = New-Object System.Management.Automation.PSCredential('product', $secureKey)
-        $productKey = $keyCredential.GetNetworkCredential().Password.Trim().ToUpperInvariant()
-        if ($productKey -notmatch '^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}
-    $activationId = [string]$target.ID
-    Write-Host ('Windows: ' + $target.Name)
-    Write-Host ('Retail key last 5: ' + $target.PartialProductKey)
-    $iid = Convert-ValidIid ([string]$target.OfflineInstallationId)
-    if (-not $iid) {
-        $iidText = Invoke-Cscript -Path "$env:windir\System32\slmgr.vbs" -Arguments @('/dti', $activationId)
-        $iid = Get-IidFromText $iidText
-    }
-    Write-Host '[OK] Da lay IID.'
-    $cid = Get-ConfirmationId $iid
-    Confirm-Activation
-    [void](Invoke-Cscript -Path "$env:windir\System32\slmgr.vbs" -Arguments @('/atp', $cid, $activationId))
-
-    $licensed = @(Get-CimInstance -ClassName SoftwareLicensingProduct -ErrorAction Stop |
-        Where-Object { $_.ApplicationID -eq $WindowsAppId -and $_.ID -eq $activationId -and $_.LicenseStatus -eq 1 })
-    if ($licensed.Count -eq 0) {
-        throw 'Windows chua bao LicenseStatus=1. Can kiem tra Activation Settings.'
-    }
-    Write-Host '[SUCCESS] Windows da kich hoat.'
-}
-
-function Get-OfficeScripts {
-    $roots = @($env:ProgramFiles, [Environment]::GetFolderPath('ProgramFilesX86'))
-    $suffixes = @(
-        'Microsoft Office\root\Office16\OSPP.VBS',
-        'Microsoft Office\Office16\OSPP.VBS',
-        'Microsoft Office\Office15\OSPP.VBS',
-        'Microsoft Office\Office14\OSPP.VBS'
-    )
-    $found = @(
-        foreach ($root in $roots) {
-            if ([string]::IsNullOrWhiteSpace($root)) { continue }
-            foreach ($suffix in $suffixes) {
-                $path = Join-Path $root $suffix
-                if (Test-Path -LiteralPath $path -PathType Leaf) { $path }
-            }
-        }
-    )
-    return @($found | Select-Object -Unique)
-}
-
-function Get-OfficeRecords([string]$Ospp) {
-    $text = Invoke-Cscript -Path $Ospp -Arguments @('/dstatus')
-    $sections = [regex]::Split($text, '(?im)(?=^[ \t]*SKU ID:)')
-    foreach ($section in $sections) {
-        $skuMatch = [regex]::Match($section, '(?im)^[ \t]*SKU ID:[ \t]*([0-9a-f-]{36})[ \t]*$', 'IgnoreCase')
-        if (-not $skuMatch.Success) { continue }
-        $descMatch = [regex]::Match($section, '(?im)^[ \t]*LICENSE DESCRIPTION:[ \t]*(.+)$', 'IgnoreCase')
-        $nameMatch = [regex]::Match($section, '(?im)^[ \t]*LICENSE NAME:[ \t]*(.+)$', 'IgnoreCase')
-        $statusMatch = [regex]::Match($section, '(?im)^[ \t]*LICENSE STATUS:[ \t]*(.+)$', 'IgnoreCase')
-        [pscustomobject]@{
-            Sku = $skuMatch.Groups[1].Value
-            Description = $descMatch.Groups[1].Value.Trim()
-            Name = $nameMatch.Groups[1].Value.Trim()
-            Status = $statusMatch.Groups[1].Value.Trim()
-            Ospp = $Ospp
-        }
-    }
-}
-
-function Activate-OfficeRetail {
-    Write-Host '=== OFFICE RETAIL - PHONE ACTIVATION ==='
-    $scripts = @(Get-OfficeScripts)
-    if ($scripts.Count -eq 0) {
-        throw 'Khong co ospp.vbs. Microsoft 365 Apps dang thue bao khong ho tro.'
-    }
-    $records = @(
-        foreach ($script in $scripts) { Get-OfficeRecords $script }
-    )
-    $retail = @($records | Where-Object {
-        $_.Description -match '(?i)RETAIL' -and $_.Description -notmatch '(?i)VOLUME|MAK|KMS'
-    } | Sort-Object Sku, Ospp -Unique)
-    if ($retail.Count -eq 0) { throw 'Khong co Office Retail su dung ospp.vbs.' }
-
-    $pending = @($retail | Where-Object { $_.Status -notmatch '(?i)---LICENSED---' })
-    if ($pending.Count -eq 0) {
-        Write-Host '[SKIP] Office Retail da kich hoat.'
-        return
-    }
-    if ($pending.Count -gt 1) {
-        Write-Host 'Cac giay phep Office Retail chua kich hoat:'
-        for ($i = 0; $i -lt $pending.Count; $i++) {
-            Write-Host ('{0}. {1}' -f ($i + 1), $pending[$i].Name)
-        }
-        $selection = 0
-        $answer = Read-Host 'Chon so giay phep (0: huy)'
-        if (-not [int]::TryParse($answer, [ref]$selection) -or $selection -lt 1 -or $selection -gt $pending.Count) {
-            throw 'Da huy. Khong thay doi giay phep Office.'
-        }
-        $target = $pending[$selection - 1]
-    } else {
-        $target = $pending[0]
-    }
-
-    Write-Host ('Office: ' + $target.Name)
-    $iidText = Invoke-Cscript -Path $target.Ospp -Arguments @('/dinstid')
-    $iid = Get-IidFromText $iidText
-    Write-Host '[OK] Da lay IID.'
-    $cid = Get-ConfirmationId $iid
-    Confirm-Activation
-    [void](Invoke-Cscript -Path $target.Ospp -Arguments @(('/actcid:' + $cid)))
-    $statusNow = @(Get-OfficeRecords $target.Ospp | Where-Object { $_.Sku -eq $target.Sku -and $_.Status -match '(?i)---LICENSED---' })
-    if ($statusNow.Count -eq 0) {
-        throw 'Office chua bao trang thai LICENSED. Kiem tra Activation trong Office.'
-    }
-    Write-Host '[SUCCESS] Office da kich hoat.'
-}
-
-try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    if (-not (Test-Admin)) { throw 'Hay mo CMD bang Run as administrator.' }
-    if ($Product -eq 'Windows') { Activate-WindowsRetail }
-    else { Activate-OfficeRetail }
-} catch {
-    Write-Host ('[ERROR] ' + $_.Exception.Message)
-}
-) {
-            Write-Host 'Product key format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
+        $credential = New-Object System.Management.Automation.PSCredential('product', $secureKey)
+        $productKey = $credential.GetNetworkCredential().Password.Trim().ToUpperInvariant()
+        if ($productKey -notmatch '^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$') {
+            Write-Host 'Product Key format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'
             return
         }
         if ((Read-Host 'Install this key into Windows? Type INSTALL') -cne 'INSTALL') { return }
-        $lastFive = $productKey.Substring(24,5)
-        $slmgr = "$env:windir\System32\slmgr.vbs"
+        $lastFive = $productKey.Substring(24, 5)
         try {
-            $result = Invoke-Cscript -Path $slmgr -Arguments @('/ipk', $productKey)
+            $result = Invoke-Cscript -Path "$env:windir\System32\slmgr.vbs" -Arguments @('/ipk', $productKey)
             Write-Host (($result -replace [regex]::Escape($productKey), '[KEY REDACTED]').Trim())
         } finally {
             $productKey = $null
-            $keyCredential = $null
+            $credential = $null
             $secureKey = $null
         }
         $products = @(
             Get-CimInstance SoftwareLicensingProduct |
             Where-Object { $_.ApplicationID -eq $WindowsAppId -and $_.PartialProductKey -and $_.Name -like 'Windows*' -and -not $_.LicenseIsAddon }
         )
-        if (@($products | Where-Object LicenseStatus -eq 1).Count -gt 0) {
+        if (@($products | Where-Object { $_.LicenseStatus -eq 1 }).Count -gt 0) {
             Write-Host 'Windows reports LicenseStatus=1.'
             return
         }
         $pending = @($products | Where-Object {
-            $_.LicenseStatus -ne 1 -and $_.Description -match '(?i)RETAIL' -and
+            $_.LicenseStatus -ne 1 -and
+            $_.Description -match '(?i)RETAIL' -and
             $_.Description -notmatch '(?i)VOLUME|MAK|KMS'
         })
         $matching = @($pending | Where-Object { $_.PartialProductKey -eq $lastFive })
         if ($matching.Count -eq 1) { $pending = $matching }
     }
+
     if ($pending.Count -ne 1) {
         Write-Host (Invoke-Cscript -Path "$env:windir\System32\slmgr.vbs" -Arguments @('/dli'))
         return
